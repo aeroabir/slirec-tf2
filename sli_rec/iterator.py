@@ -1,6 +1,6 @@
 import numpy as np
 import json
-import pickle as pkl
+import pickle
 import random
 import math
 import tempfile
@@ -10,14 +10,17 @@ import os
 
 
 def load_dict(filename):
-    try:
-        with open(filename, "rb") as f:
-            f_json = json.load(f)
-            return dict((key.encode("UTF-8"), value) for (key, value) in f_json.items())
-    except:
-        with open(filename, "rb") as f:
-            f_pkl = pkl.load(f)
-            return dict((key.encode("UTF-8"), value) for (key, value) in f_pkl.items())
+    with open(filename, "rb") as fr:
+        ddict = pickle.load(fr)
+    return ddict
+    # try:
+    #     with open(filename, "rb") as f:
+    #         f_json = json.load(f)
+    #         return dict((key.encode("UTF-8"), value) for (key, value) in f_json.items())
+    # except:
+    #     with open(filename, "rb") as f:
+    #         f_pkl = pickle.load(f)
+    #         return dict((key.encode("UTF-8"), value) for (key, value) in f_pkl.items())
 
 
 class Iterator:
@@ -184,7 +187,7 @@ def shuffle(file):
     tf.close()
 
     lines = open(tpath, "r").readlines()
-    random.shuffle(lines)
+    # random.shuffle(lines)
     path, filename = os.path.split(os.path.realpath(file))
     fd = tempfile.TemporaryFile(prefix=filename + ".shuf", dir=path)
 
@@ -197,30 +200,3 @@ def shuffle(file):
     os.remove(tpath)
 
     return fd
-
-
-# def shuffle(file):
-#     tf_os, tpath = tempfile.mkstemp(dir="data")
-#     tf = open(tpath, "w")
-
-#     fd = open(file, "r")
-#     for l in fd:
-#         print >> tf, l.strip("\n")
-#         # print(l.strip("\n"), file=tf)
-#         # tf.write(l.strip("\n"))
-#     tf.close()
-
-#     lines = open(tpath, "r").readlines()
-#     random.shuffle(lines)
-#     path, filename = os.path.split(os.path.realpath(file))
-#     fd = tempfile.TemporaryFile(prefix=filename + ".shuf", dir=path, mode="w")
-#     for l in lines:
-#         s = l.strip("\n")
-#         # fd.write(s)
-#         # print(s, file=fd)
-#         print >> fd, s
-
-#     fd.seek(0)
-#     os.remove(tpath)
-
-#     return fd

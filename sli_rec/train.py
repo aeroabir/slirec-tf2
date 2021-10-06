@@ -40,20 +40,30 @@ def train(train_file = "data/train_data", test_file = "data/test_data", save_pat
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
 
-        itr = 0
+        # ii = 0
+        # for src, tgt in train_data:
+        #     ii += 1
+        # print(ii)
+        # sys.exit("JJ")
+        
         learning_rate = LR
         best_auc = 0.0
         best_model_path = save_path + model_type
         for i in range(MAX_EPOCH):
             train_loss_sum = 0.0
             train_accuracy_sum = 0.0
+            itr = 0
             for src, tgt in train_data:
                 user, targetitem, targetcategory, item_history, cate_history, timeinterval_history, timelast_history, timenow_history, mid_mask, label, seq_len = prepare_data(src, tgt)
                 
                 # with open('temp.pkl', 'wb') as fw:
                 #     pickle.dump((user, targetitem, targetcategory, item_history, cate_history, timeinterval_history, timelast_history, timenow_history, mid_mask, label, seq_len), fw)
                 
-                print(timeinterval_history.shape)
+                # print(user)
+                # print(targetitem)
+                # print(targetcategory)
+                # sys.exit()
+                # print(timeinterval_history.shape)
                 # print(timelast_history.shape)
                 # print(timenow_history.shape)
                 # print(mid_mask)
@@ -80,6 +90,7 @@ def train(train_file = "data/train_data", test_file = "data/test_data", save_pat
                     
                     train_loss_sum = 0.0
                     train_accuracy_sum = 0.0
+            print(itr)
 
 if __name__ == "__main__":
     train()

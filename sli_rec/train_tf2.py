@@ -3,6 +3,10 @@ import numpy as np
 import tensorflow as tf
 from iterator import Iterator
 import sys
+from tqdm import tqdm
+import math
+import os
+from sklearn.metrics import roc_auc_score, precision_score, recall_score
 
 from model_tf2 import SLiRec_Adaptive
 
@@ -39,6 +43,82 @@ MODEL_DICT = {
     # "SLi_Rec_Fixed": Model_SLi_Rec_Fixed,
     "SLi_Rec_Adaptive": SLiRec_Adaptive,
 }
+
+
+def calc_auc(raw_arr):
+    arr = sorted(raw_arr, key=lambda d: d[0], reverse=True)
+    pos, neg = 0.0, 0.0
+    for record in arr:
+        if record[1] == 1.0:
+            pos += 1
+        else:
+            neg += 1
+
+    fp, tp = 0.0, 0.0
+    xy_arr = []
+    for record in arr:
+        if record[1] == 1.0:
+            tp += 1
+        else:
+            fp += 1
+        xy_arr.append([fp / neg, tp / pos])
+
+    auc = 0.0
+    prev_x = 0.0
+    prev_y = 0.0
+    for x, y in xy_arr:
+        if x != prev_x:
+            auc += (x - prev_x) * (y + prev_y) / 2.0
+            prev_x = x
+            prev_y = y
+
+    return auc
+
+
+def evaluate_epoch(test_data, model):
+
+    test_loss_sum = 0.0
+    test_accuracy_sum = 0.0
+    count = 0
+    output = []
+    y_true, y_score, y_pred = [], [], []
+    y_true2 = []
+    for src, tgt in test_data:
+        count += 1
+        all_inputs = prepare_data(src, tgt)
+        inputs, label = create_dict(all_inputs)
+        test_prob = model(inputs, training=False)
+        test_loss = -tf.reduce_mean(tf.math.log(test_prob) * label)
+        test_acc = tf.reduce_mean(
+            tf.cast(tf.equal(tf.round(test_prob), label), tf.float32)
+        )
+        test_loss_sum += test_loss
+        test_accuracy_sum += test_acc
+        # print(test_prob[:10,:])
+        # print(label[:10,:])
+        test_prob_1 = test_prob[:, 0].numpy().tolist()
+        label_1 = label[:, 0].tolist()
+        pred_label = np.argmax(test_prob, axis=-1).tolist()
+        true_label = np.argmax(label, axis=-1).tolist()
+        # print(pred_label[:10])
+        # print(true_label[:10])
+        # sys.exit("HERE")
+        y_pred.extend(pred_label)
+        y_true2.extend(true_label)
+        for p, t in zip(test_prob_1, label_1):
+            output.append([p, t])
+            y_true.append(t)
+            y_score.append(p)
+
+    test_auc = calc_auc(output)
+    # y_pred = np.where(np.array(y_score)>0.5, 1, 0)
+    print("ROC-AUC:", roc_auc_score(y_true, y_score), test_auc)
+    print("precision:", precision_score(y_true2, y_pred))
+    print("recall:", recall_score(y_true2, y_pred))
+    test_loss = test_loss_sum / count
+    test_accuracy = test_accuracy_sum / count
+
+    return test_auc, test_loss, test_accuracy
 
 
 def prepare_data(source, target, maxlen=MAXLEN):
@@ -157,7 +237,7 @@ def create_dict(tup):
 
 
 def train(
-    train_file="data/train_data",
+    train_file="data/train_data_reduced",
     test_file="data/test_data",
     save_path="saved_model/",
     model_type=MODEL_TYPE,
@@ -226,7 +306,15 @@ def train(
     learning_rate = LR
     best_auc = 0.0
     best_model_path = save_path + model_type
-    num_steps = int(user_number / BATCH_SIZE)
+
+    st = os.popen("wc -l data/train_data_reduced")
+    num_train_data = int(st.read().split()[0])
+    num_steps = math.ceil(num_train_data / BATCH_SIZE)
+
+    print(
+        "%g Users and %g items (%g categories)"
+        % (user_number, item_number, cate_number)
+    )
 
     for epoch in range(1, MAX_EPOCH + 1):
         train_loss_sum = 0.0
@@ -234,9 +322,20 @@ def train(
         step_loss = []
         train_loss.reset_states()
 
+        # for step in tqdm(
+        #     range(num_steps), total=num_steps, ncols=70, leave=False, unit="b"
+        # ):
+        #     src, tgt = next(train_data)
+        # print(src)
         for src, tgt in train_data:
 
             all_inputs = prepare_data(src, tgt)
+            # all_inputs has the following fields (in that order):
+            # user, targetitem, targetcategory, item_history_np,
+            # cate_history_np,
+            # timeinterval_history_np, timelast_history_np, timenow_history_np,
+            # mid_mask, np.array(target), np.array(sequence_length)
+
             inputs, target = create_dict(all_inputs)
             # for k in inputs:
             #     print(k, inputs[k].shape)
@@ -244,12 +343,22 @@ def train(
             # print(inputs)
             # sys.exit("KK")
 
-            train_loss, train_acc = train_step(inputs, target)
+            loss, train_acc = train_step(inputs, target)
             # y_hat = model(inputs, training=False)
             # print(loss)
-            step_loss.append(train_loss)
-            train_loss_sum += train_loss
+            step_loss.append(loss)
+            train_loss_sum += loss
             train_accuracy_sum += train_acc
+            itr += 1
+            if (itr % TEST_FREQ) == 0:
+                print(
+                    f"Iter: {itr}, training loss = {train_loss_sum / TEST_FREQ}, training accuracy = {train_accuracy_sum / TEST_FREQ}"
+                )
+
+                test_auc, test_loss, test_acc = evaluate_epoch(test_data, model)
+                print(
+                    f"test_auc: {test_auc}, testing loss = {test_loss}, testing accuracy = {test_acc}"
+                )
 
         print(
             f"Epoch: {epoch}, Train Loss: {np.mean(step_loss):.3f}, {train_loss.result():.3f}"
